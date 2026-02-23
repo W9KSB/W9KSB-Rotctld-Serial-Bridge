@@ -250,10 +250,10 @@ The encoder button:
 
 The LCD displays:
 
--   Active mode
--   Frequency state
+-   WIFI Status
+-   Client IP or AP HotSpot Credentials
 -   Rotor position
--   Network status
+-   Active Encoder knob mode: Calibrate or Frequency CTRL
 
 ------------------------------------------------------------------------
 
@@ -271,7 +271,7 @@ The LCD displays:
 
 Simultaneously:
 
-    Encoder → Frequency Adjustments → SatPC32
+    Encoder → Frequency Adjustments acting as virtual keyboard → SatPC32
 
 ------------------------------------------------------------------------
 
