@@ -15,6 +15,7 @@
 
 #include <Arduino.h>
 #include <WiFi.h>
+#include <esp_wifi.h>
 #include <WebServer.h>
 #include <Preferences.h>
 #include <Wire.h>
@@ -30,8 +31,8 @@
 // ----------------------------
 // WiFi credentials (edit here)
 // ----------------------------
-static const char* WIFI_SSID = "**SSID-GOES-HERE**";
-static const char* WIFI_PASS = "**PASS-GOES-HERE**";
+static const char* WIFI_SSID = "SSID-GOES-HERE";
+static const char* WIFI_PASS = "PASS-GOES-HERE";
 
 // Optional fallback AP if STA fails
 static const bool  ENABLE_FALLBACK_AP = true;
@@ -82,7 +83,6 @@ static const uint8_t LCD_ROWS = 4;
 // ----------------------------
 // Behavior tuning
 // ----------------------------
-static const uint32_t LCD_REFRESH_MS = 250;      // slower = faster web/bridge
 
 // LCD "ticker" (line 4) - short event summaries
 
@@ -168,6 +168,8 @@ static String btnKey = DEFAULT_BTN_KEY;
 
 LiquidCrystal_I2C lcd(LCD_I2C_ADDR, LCD_COLS, LCD_ROWS);
 
+// Cache last rendered LCD lines to avoid re-printing (reduces flicker)
+static String lcdLastPrinted[LCD_ROWS];
 
 WiFiClient rotClient;
 
@@ -198,9 +200,17 @@ static bool swStable = true;
 static bool swLastRead = true;
 static uint32_t swLastChangeMs = 0;
 
-// LCD timing
-static uint32_t lastLcdMs = 0;
+// LCD timing (per-line refresh to keep UI responsive)
+static uint32_t lastLcdLine0Ms = 0; // Wifi status
+static uint32_t lastLcdLine1Ms = 0; // IP line (incl AP scroll)
+static uint32_t lastLcdLine2Ms = 0; // Position line (real rotator AZ/EL)
+static uint32_t lastLcdLine3Ms = 0; // Mode line
 
+static const uint32_t LCD_LINE0_MS = 1000;
+static const uint32_t LCD_LINE1_MS_STA = 1000;
+static const uint32_t LCD_LINE1_MS_AP_SCROLL = 350;
+static const uint32_t LCD_LINE2_POS_MS = 1500;
+static const uint32_t LCD_LINE3_MODE_MS = 500;
 // ----------------------------
 // Simple ring buffer logger
 // ----------------------------
@@ -286,6 +296,11 @@ static void lcdWriteLine(uint8_t row, const String& text) {
   // Normalize to exactly 20 chars (pad or trim) WITHOUT String(char, n) ctor ambiguity
   if (t.length() > LCD_COLS) t = t.substring(0, LCD_COLS);
   while (t.length() < LCD_COLS) t += ' ';
+
+  // Avoid re-printing identical content (reduces visible LCD "wipe"/ghosting)
+  if (row < LCD_ROWS && lcdLastPrinted[row] == t) return;
+  if (row < LCD_ROWS) lcdLastPrinted[row] = t;
+
   lcd.setCursor(0, row);
   lcd.print(t);
 }
@@ -302,11 +317,53 @@ static String lcdCenter20(const String &s) {
 }
 
 static String lcdLine4Mode() {
-  // Mode indicator with asterisks
-  return encFreqCtrlMode
-    ? lcdCenter20("**FREQUENCY CTRL**")
-    : lcdCenter20("**CALIBRATE**");
+  // Matches your requested labels
+  return encFreqCtrlMode ? lcdCenter20("Frequency Ctrl") : lcdCenter20("CALIBRATE");
 }
+
+// LCD line 3 (row 2): real rotator position (from rotctld feedback)
+static String lcdLineRotatorPos() {
+  // If we haven't received a valid position yet, show dashes
+  if (!isfinite(lastRotAz) || !isfinite(lastRotEl)) {
+    return "AZ:--- EL:---";
+  }
+
+  // Example: "AZ:010 EL:010" (<= 20 chars)
+  int az = (int)lround(lastRotAz);
+  int el = (int)lround(lastRotEl);
+  if (az < 0) az = 0; if (az > 360) az = 360;
+  if (el < 0) el = 0; if (el > 180) el = 180;
+  return String("AZ:") + fmt3(az) + String(" EL:") + fmt3(el);
+}
+
+
+static void serviceLCD(uint32_t nowMs) {
+  // Line 1 (row 0): Wifi state
+  if (nowMs - lastLcdLine0Ms >= LCD_LINE0_MS) {
+    lastLcdLine0Ms = nowMs;
+    lcdWriteLine(0, lcdCenter20(lcdLineWifiState()));
+  }
+
+  // Line 2 (row 1): IP line (scrolls in AP mode)
+  const uint32_t ipInterval = wifiAPActive ? LCD_LINE1_MS_AP_SCROLL : LCD_LINE1_MS_STA;
+  if (nowMs - lastLcdLine1Ms >= ipInterval) {
+    lastLcdLine1Ms = nowMs;
+    lcdWriteLine(1, lcdLineIpOrApScroll());
+  }
+
+  // Line 3 (row 2): Rotator position (can be slower)
+  if (nowMs - lastLcdLine2Ms >= LCD_LINE2_POS_MS) {
+    lastLcdLine2Ms = nowMs;
+    lcdWriteLine(2, lcdLineRotatorPos());
+  }
+
+  // Line 4 (row 3): Encoder mode (more responsive)
+  if (nowMs - lastLcdLine3Ms >= LCD_LINE3_MODE_MS) {
+    lastLcdLine3Ms = nowMs;
+    lcdWriteLine(3, lcdLine4Mode());
+  }
+}
+
 
 static void toggleEncoderMode() {
   encFreqCtrlMode = !encFreqCtrlMode;
@@ -416,14 +473,6 @@ static bool rotSetPosition(float az, float el) {
 // ----------------------------
 // GS-232 parsing
 // ----------------------------
-// Common minimal GS-232 used by tracking programs:
-//   - "AZxxx" / "ELxxx" may arrive separately or together.
-//   - Some send "W" to query (we respond: "AZ=xxx EL=xxx") or "AZxxx ELxxx" style.
-// We'll implement:
-//   - Accept tokens AZnnn and ELnnn (0-360 / 0-90)
-//   - If we receive both (same line or over time), we send to rotctld immediately.
-//   - "W" / "C2" query: return current rotator position in simple GS-232-ish format.
-//   - "S" stop: no-op (could map to rotctld stop if desired)
 static void pcSendReply(const String& s) {
   Serial.print(s);
   Serial.print("\r\n");
@@ -441,13 +490,9 @@ static void handlePcCommand(const String& lineRaw) {
   String up = line;
   up.toUpperCase();
 
-  // --- GS-232 query commands ---
-  // SatPC32 commonly uses "C2" to query current position.
-  // Some software uses "C" or a bare "W" as a query.
   if (up == "C2" || up == "C" || up == "W") {
     float az, el;
     if (rotGetPosition(az, el)) {
-      // Plain ASCII reply (avoid fancy dashes/arrows)
       String resp = String("AZ=") + fmt3(az) + " EL=" + fmt3(el);
       pcSendReply(resp);
     } else {
@@ -456,14 +501,10 @@ static void handlePcCommand(const String& lineRaw) {
     return;
   }
 
-  // --- GS-232 set-position command ---
-  // GS-232 "W" format:  Wxxx yyy   (AZ then EL, both 3 digits)
-  // Variants seen:      Wxxx yyy\r\n, Wxxx yyy, Wxxxyyy
   if (up.length() >= 2 && up[0] == 'W') {
     String rest = up.substring(1);
     rest.trim();
 
-    // Split on whitespace if present
     String aStr, bStr;
     int sp = rest.indexOf(' ');
     if (sp < 0) sp = rest.indexOf('\t');
@@ -474,7 +515,6 @@ static void handlePcCommand(const String& lineRaw) {
       aStr.trim();
       bStr.trim();
     } else {
-      // No separator; expect at least 6 chars: "100010"
       if (rest.length() >= 6) {
         aStr = rest.substring(0, 3);
         bStr = rest.substring(3, 6);
@@ -484,7 +524,6 @@ static void handlePcCommand(const String& lineRaw) {
       }
     }
 
-    // Must be numeric
     if (aStr.length() == 0 || bStr.length() == 0) {
       pcSendReply("ERR");
       return;
@@ -493,25 +532,19 @@ static void handlePcCommand(const String& lineRaw) {
     float az = aStr.toFloat();
     float el = bStr.toFloat();
 
-    // Latch last received PC command (what SatPC32 asked for)
     lastPcAz = az;
     lastPcEl = el;
 
-    // Send to rotctld (safety limits applied inside rotSetPosition if enabled)
-
     rotSetPosition(az, el);
-pcSendReply("OK");
+    pcSendReply("OK");
     return;
   }
 
-  // --- STOP ---
   if (up == "S" || up == "STOP") {
     pcSendReply("OK");
     return;
   }
 
-  // --- Alternate token formats ---
-  // Accept tokens like: "AZ123 EL045" (either/both, in any order)
   float az = lastPcAz;
   float el = lastPcEl;
   bool gotAz = false;
@@ -564,8 +597,6 @@ pcSendReply("OK");
 // ----------------------------
 // Encoder ISR (quadrature, bounce-tolerant)
 // ----------------------------
-// Transition table: index = (prev<<2) | curr, value = -1/0/+1 quarter-step
-// Valid Gray-code transitions only; everything else is treated as bounce/noise.
 static const int8_t ENC_TRANSITION[16] = {
   0, -1, +1,  0,
  +1,  0,  0, -1,
@@ -574,7 +605,6 @@ static const int8_t ENC_TRANSITION[16] = {
 };
 
 static void IRAM_ATTR encISR() {
-  // Light guard to ignore ultra-fast bursts (bounce). Use micros (safe on ESP32 in ISR).
   uint32_t us = micros();
   if ((uint32_t)(us - encLastIsrUs) < ENC_ISR_GUARD_US) return;
   encLastIsrUs = us;
@@ -586,7 +616,6 @@ static void IRAM_ATTR encISR() {
   uint8_t idx = (encPrevAB << 2) | curr;
   int8_t step = ENC_TRANSITION[idx];
   if (step != 0) {
-    // Clamp to keep it bounded if something goes insane
     int16_t v = encSteps + step;
     if (v > 32760) v = 32760;
     if (v < -32760) v = -32760;
@@ -596,9 +625,7 @@ static void IRAM_ATTR encISR() {
   encPrevAB = curr;
 }
 
-
 static void IRAM_ATTR encBtnISR() {
-  // Record the latest raw level and time; debounce in task context
   btn_isrLevel = digitalRead(ENC_SW_PIN);
   btn_isrAtMs = millis();
   btn_isrPending = true;
@@ -607,13 +634,12 @@ static void IRAM_ATTR encBtnISR() {
 static void sendKeyPlus() {
   Keyboard.write('+');
   logENC.add("TX Freq +");
-  }
+}
 
 static void sendKeyMinus() {
   Keyboard.write('-');
   logENC.add("TX Freq -");
 }
-
 
 static void sendKeyLaneUp() {
   Keyboard.press(KEY_UP_ARROW);
@@ -629,16 +655,13 @@ static void sendKeyLaneDown() {
   logENC.add("TX Lane -");
 }
 
-
 static inline bool encButtonPressedRaw() {
-  // Returns true if the button is physically pressed (raw, not debounced)
   const int v = digitalRead(ENC_SW_PIN);
   if (ENC_BUTTON_ACTIVE_LOW) return (v == LOW);
   return (v == HIGH);
 }
 
 static void encoderTask() {
-  // ---- rotation ----
   int16_t steps = 0;
   noInterrupts();
   if (encSteps != 0) {
@@ -648,12 +671,10 @@ static void encoderTask() {
   interrupts();
 
   if (steps != 0) {
-    // Accumulate quarter-steps; emit only on full detents
     detentAcc += steps;
 
     uint32_t now = millis();
 
-    // Emit at most one event per ENC_STEP_MIN_MS, but allow multiple detents over time
     if (now - lastEncEmitMs >= ENC_STEP_MIN_MS) {
       if (detentAcc >= (int8_t)ENC_DETENT_STEPS) {
         detentAcc -= (int8_t)ENC_DETENT_STEPS;
@@ -666,22 +687,18 @@ static void encoderTask() {
       }
     }
 
-    // Prevent runaway accumulation if you spin wildly / noise appears
     if (detentAcc > 32) detentAcc = 32;
     if (detentAcc < -32) detentAcc = -32;
   }
 
-  // ---- button (ISR + debounce) ----
   const uint32_t nowMs = millis();
   if (btn_isrPending) {
-    // Wait until the level has been stable for BTN_DEBOUNCE_MS since the last ISR edge
     if ((uint32_t)(nowMs - btn_isrAtMs) >= BTN_DEBOUNCE_MS) {
       btn_isrPending = false;
       const bool pressed = encButtonPressedRaw();
       if (pressed != btn_stablePressed) {
         btn_stablePressed = pressed;
         if (pressed) {
-          // extra guard so a single press can't spam if something is noisy
           if ((uint32_t)(nowMs - btn_lastEventMs) >= 150) {
             btn_lastEventMs = nowMs;
             logENC.add("ENC Button");
@@ -860,11 +877,6 @@ static void handleSettings() {
 
   server.sendContent("<div style='height:10px'></div>");
 
-  server.sendContent("<div class='row'>");
-  server.sendContent("<div class='col'><b>Encoder</b><div class='mono'>Rotate: TX Freq + / TX Freq -</div></div>");
-    server.sendContent(String("<div class='col'>Button Key<br><input name='bkey' style='width:100%' value='") + htmlEscape(btnKey) + "'><div class='mono' style='opacity:.8;margin-top:4px'>ENTER, SPACE, TAB, ESC, BACKSPACE, or 1 char</div></div>");
-  server.sendContent("</div>");
-
   server.sendContent("<div style='margin-top:10px'><button type='submit'>Save</button> ");
   server.sendContent("<a class='pill' href='/'>Back</a></div>");
   server.sendContent("</form></div>");
@@ -872,18 +884,14 @@ static void handleSettings() {
   sendFooter();
 }
 
-
 static void handleSave() {
   if (server.hasArg("rhost")) rotHost = server.arg("rhost");
   if (server.hasArg("rport")) rotPort = (uint16_t)server.arg("rport").toInt();
   if (server.hasArg("safety")) safetyEnabled = (server.arg("safety").toInt() != 0);
-    if (server.hasArg("bkey")) btnKey = server.arg("bkey");
-
   prefs.begin("gs232bridge", false);
   prefs.putString("rhost", rotHost);
   prefs.putUShort("rport", rotPort);
   prefs.putBool("safety", safetyEnabled);
-    prefs.putString("bkey", btnKey);
   prefs.end();
 
   rotDisconnectIfOpen();
@@ -892,14 +900,12 @@ static void handleSave() {
   server.send(303, "text/plain", "Saved");
 }
 
-
 static void handleDebug() {
   sendHeader("Debug");
 
   server.sendContent("<div class='card'><h2>Debug Console</h2>");
   server.sendContent("<div class='row'>");
 
-  // Pane template
   auto pane = [&](const char* id, const char* title, const char* endpoint) {
     server.sendContent("<div class='col'>");
     server.sendContent("<b>");
@@ -950,7 +956,6 @@ static void handleDebug() {
 
   server.sendContent("</div></div>");
 
-  // JS
   server.sendContent("<script>"
     "const timers={};"
     "async function refreshLog(id,ep){"
@@ -1000,6 +1005,7 @@ static void handleLogSYS() {
 // ----------------------------
 static void wifiStart() {
   WiFi.mode(WIFI_STA);
+  esp_wifi_set_ps(WIFI_PS_NONE);
   WiFi.setSleep(false);
 
   logSYS.add("WiFi: connecting STA...");
@@ -1021,6 +1027,7 @@ static void wifiStart() {
 
   if (ENABLE_FALLBACK_AP) {
     WiFi.mode(WIFI_AP);
+    esp_wifi_set_ps(WIFI_PS_NONE);
     WiFi.softAP(AP_SSID, AP_PASS);
     wifiAPActive = true;
     logSYS.add(String("WiFi AP active: ") + ipToString(WiFi.softAPIP()));
@@ -1033,8 +1040,6 @@ static void wifiStart() {
 static String pcLineBuf;
 
 static void sendButtonAction() {
-  // Called on a *debounced press* event only.
-  // btnKey supports named keys or a single character.
   String k = btnKey;
   k.trim();
   k.toUpperCase();
@@ -1058,65 +1063,57 @@ static void sendButtonAction() {
     Keyboard.write((uint8_t)'\b');
     logENC.add("ENC Button (Backspace)");
   } else if (k == "ESC" || k == "ESCAPE") {
-    // ESC is not ASCII-printable; send HID keycode via press/release
     Keyboard.press(KEY_ESC);
     delay(5);
     Keyboard.releaseAll();
     logENC.add("ENC Button (Esc)");
   } else {
-    // Unknown token: do nothing but log
     logENC.add(String("ENC Button (unknown: ") + k + ")");
   }
 }
+
 void setup() {
-  // USB (CDC + HID) - start USB stack first so the host enumerates both interfaces
   USB.begin();
   Keyboard.begin();
 
-  // USB CDC serial (SatPC32 / PC)
   Serial.begin(PC_BAUD);
   delay(200);
 
-  // Load settings
   prefs.begin("gs232bridge", true);
   rotHost = prefs.getString("rhost", rotHost);
   rotPort = prefs.getUShort("rport", rotPort);
   safetyEnabled = prefs.getBool("safety", safetyEnabled);
-    btnKey = prefs.getString("bkey", btnKey);
+  btnKey = prefs.getString("bkey", btnKey);
   prefs.end();
 
-  // I2C/LCD
   Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
+  Wire.setClock(400000); // 400 kHz I2C for snappier LCD updates
   lcd.init();
   lcd.backlight();
+  for (uint8_t i = 0; i < LCD_ROWS; i++) lcdLastPrinted[i] = String();
   lcdWriteLine(0, "Booting...");
   lcdWriteLine(1, "WiFi...");
   lcdWriteLine(2, "ROT...");
   lcdWriteLine(3, "Ready");
 
-  // Encoder pins
   pinMode(ENC_A_PIN, INPUT_PULLUP);
   pinMode(ENC_B_PIN, INPUT_PULLUP);
   pinMode(ENC_SW_PIN, ENC_BUTTON_ACTIVE_LOW ? INPUT_PULLUP : INPUT_PULLDOWN);
 
-  // Button initial state + ISR
   btn_stablePressed = encButtonPressedRaw();
   btn_lastEventMs = millis();
   btn_isrPending = false;
   btn_isrLevel = digitalRead(ENC_SW_PIN);
   attachInterrupt(digitalPinToInterrupt(ENC_SW_PIN), encBtnISR, CHANGE);
 
-  // Initialize encoder state before enabling interrupts
   encPrevAB = ((uint8_t)digitalRead(ENC_A_PIN) << 1) | (uint8_t)digitalRead(ENC_B_PIN);
   encSteps = 0;
   detentAcc = 0;
   attachInterrupt(digitalPinToInterrupt(ENC_A_PIN), encISR, CHANGE);
   attachInterrupt(digitalPinToInterrupt(ENC_B_PIN), encISR, CHANGE);
 
-  // WiFi
   wifiStart();
 
-  // Web routes
   server.on("/", HTTP_GET, handleRoot);
   server.on("/set", HTTP_POST, handleSet);
   server.on("/settings", HTTP_GET, handleSettings);
@@ -1134,8 +1131,6 @@ void setup() {
 
   server.begin();
   logSYS.add(String("HTTP server on :") + String(HTTP_PORT));
-
-  lastLcdMs = 0;
   lastEncEmitMs = 0;
   swStable = digitalRead(ENC_SW_PIN);
   swLastRead = swStable;
@@ -1143,15 +1138,13 @@ void setup() {
 
   lcdWriteLine(0, lcdLineWifiState());
   lcdWriteLine(1, lcdLineIpOrApScroll());
-  lcdWriteLine(2, String("AZ: ") + fmt3(lastRotAz) + " EL: " + fmt3(lastRotEl));
+  lcdWriteLine(2, lcdLineRotatorPos());
   lcdWriteLine(3, lcdLine4Mode());
 }
 
 void loop() {
-  // Web server
   server.handleClient();
 
-  // Read PC serial lines
   while (Serial.available()) {
     char c = (char)Serial.read();
     if (c == '\r' || c == '\n') {
@@ -1164,29 +1157,14 @@ void loop() {
     }
   }
 
-  // Encoder -> keyboard
   encoderTask();
 
-  // LCD periodic refresh
   uint32_t now = millis();
-  if (now - lastLcdMs >= LCD_REFRESH_MS) {
-    lastLcdMs = now;
+  serviceLCD(now);
 
-    lcdWriteLine(0, lcdLineWifiState());
-      lcdWriteLine(1, lcdLineIpOrApScroll());
-      {
-        char b[21];
-        snprintf(b, sizeof(b), "AZ: %s EL: %s", fmt3(lastRotAz).c_str(), fmt3(lastRotEl).c_str());
-        lcdWriteLine(2, String(b));
-      }
-      lcdWriteLine(3, lcdLine4Mode());
-}
-
-  // Keep wifi status flags current
   if (!wifiAPActive) {
     wifiSTAConnected = (WiFi.status() == WL_CONNECTED);
   }
 
-  // tiny yield
   delay(0);
 }
