@@ -57,13 +57,13 @@ giving you physical, tactile frequency control during live operation. The contro
 
 # 📸 Photos
 
-## Front View
+## Device \ Hardware Views
 
-![Front View](images/front.jpg)
+![Front View](images/Device-1.jpeg)
 
-## Internal Layout
+![Rear View](images/Device-2.jpeg)
 
-![Internal Layout](images/internal.jpg)
+![Internal Layout](images/Device-3.jpeg)
 
 ## Web Interface
 
