@@ -59,11 +59,11 @@ giving you physical, tactile frequency control during live operation. The contro
 
 ## Device \ Hardware Views
 
-![Front View](images/Device-1.jpeg)
+![Front View](photos/Device-1.jpeg)
 
-![Rear View](images/Device-2.jpeg)
+![Rear View](photos/Device-2.jpeg)
 
-![Internal Layout](images/Device-3.jpeg)
+![Internal Layout](photos/Device-3.jpeg)
 
 ## Web Interface
 
