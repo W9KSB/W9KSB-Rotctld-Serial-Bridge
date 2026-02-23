@@ -274,17 +274,19 @@ Simultaneously:
 
 ------------------------------------------------------------------------
 
-# 📡 Designed For
+## 📦 Core Parts List
 
--   SatPC32 satellite operators
--   Hamlib / rotctld rotor users
--   Linear transponder operators
--   DIY rotor builders
--   Operators who prefer physical tuning over mouse-only control
+- ESP32-S3 (N16R8) - https://amzn.to/4cbqoCO
+- 20x4 I2C LCD (HD44780 compatible) - https://amzn.to/4sc7sJ4
+- EC11 rotary encoder (with pushbutton) - https://amzn.to/40cyK69
+- USB-C panel-mount extension cable - https://amzn.to/4aJc4ir
+- Breadboard jumper wires - https://amzn.to/3ZVG2uL
+- Optional:
+- momentary pushbuttons (BOOT / RESET) - https://amzn.to/40s9ysa
+- On\Off Power Toggle Switch - https://amzn.to/3ZWNk1k
 
 ------------------------------------------------------------------------
 
 # 📌 Status
 
-Field-tested during live satellite passes.\
-Actively used in real-world operation.
+Working with initial testing without issue.
