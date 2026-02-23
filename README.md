@@ -67,7 +67,9 @@ giving you physical, tactile frequency control during live operation.
 
 ## Web Interface
 
-![Web Interface](images/webui.jpg)
+![Web Interface - Overview](photos/GUI-1.jpg)
+![Web Interface - Settings Page](photos/GUI-2-Settings.jpg)
+![Web Interface - Debug and Logging View](photos/GUI-3-Debug.jpg)
 
 ------------------------------------------------------------------------
 
