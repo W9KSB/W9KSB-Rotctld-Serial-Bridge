@@ -30,7 +30,7 @@ TCP/IP instead.
 This controller:
 
 -   Emulates the **Yaesu GS-232 command language**
--   Receives commands from SatPC32 over USB serial
+-   Receives commands from SatPC32 over USB serial virtual com port
 -   Translates them
 -   Forwards position commands over the network to a rotctld-compatible
     rotor
@@ -51,7 +51,7 @@ Satellite operation requires constant small adjustments:
 Using a mouse mid-pass is clumsy.
 
 This controller provides a **rotary encoder with dual control modes**,
-giving you physical, tactile frequency control during live operation.
+giving you physical, tactile frequency control during live operation. The controller is acting as a virtual keyboard simulating and sending specific key presses where needed.
 
 ------------------------------------------------------------------------
 
@@ -210,11 +210,12 @@ The rotary encoder is the primary physical control interface.
 
 ------------------------------------------------------------------------
 
-## 🎚 Mode 1 --- TX Align Mode
+## 🎚 Mode 1 --- TX Align Mode - ***CALIBRATE***
 
 -   Adjusts **TX frequency only**
 -   RX remains fixed
 -   Used to align your uplink to the satellite's RX lane
+-   Sends +/- keyboard commands (for SATPC32 and other software)
 
 Ideal for:
 
@@ -224,11 +225,12 @@ Ideal for:
 
 ------------------------------------------------------------------------
 
-## 🔄 Mode 2 --- Sync Adjust Mode
+## 🔄 Mode 2 --- TX/RX Lane Adjust Mode - ***FREQUENCY CTRL***
 
 -   Adjusts **RX and TX together**
 -   Maintains frequency relationship
 -   Moves working position up/down passband
+-   Sends up/down arrow keyboard commands (for SATPC32 and other software)
 
 Ideal for:
 
