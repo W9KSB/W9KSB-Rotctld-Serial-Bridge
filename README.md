@@ -9,8 +9,8 @@ A purpose-built **ESP32-S3 satellite control console** that:
 -   Provides a **dedicated physical frequency tuning interface** for
     live satellite passes
 
-This project modernizes legacy GS-232 workflows while adding intuitive
-hardware-based frequency control.
+This project modernizes traditional GS-232 focused workflows while adding intuitive
+hardware-based frequency control. The future of the project made add other serial command syntaxes as well.
 
 ------------------------------------------------------------------------
 
@@ -22,20 +22,20 @@ This project solves two real-world satellite operator problems.
 
 ## 1️⃣ GS-232 → Hamlib Network Bridge
 
-SatPC32 expects a **Yaesu GS-232 serial rotor controller**.
+SatPC32 expects a **serial rotor controller** such as a Yaesu GS-232.
 
-Modern rotors often expose control through **Hamlib (rotctld)** over
-TCP/IP instead.
+Lots of rotors often expose control through **Hamlib (rotctld)** over
+TCP/IP instead, especially those like the W9KSB antenna rotator that I designed, or others like the SatNOGS rotator..
 
 This controller:
 
--   Emulates the **Yaesu GS-232 command language**
+-   Emulates the **Yaesu GS-232 command language** as the first protocol, due to how popular and widely used it is.
 -   Receives commands from SatPC32 over USB serial virtual com port
 -   Translates them
 -   Forwards position commands over the network to a rotctld-compatible
     rotor
 
-This allows modern networked rotors to work seamlessly with legacy
+This allows modern networked rotors to work seamlessly with 
 GS-232-based software --- no original Yaesu controller required.
 
 ------------------------------------------------------------------------
