@@ -9,7 +9,7 @@ A purpose-built **ESP32-S3 satellite control console** that:
 -   Provides a **dedicated physical frequency tuning interface** for
     live satellite passes
 
-This project works off of traditional GS-232 focused workflows while adding intuitive hardware-based frequency control. The future of the project may add other serial command syntaxes as well. Yes, I had AI assistance in the coding, but feel free to review the code for yourself. It works great for my personal use case!
+This project works off of traditional GS-232 focused workflows while adding intuitive hardware-based frequency control. The future of the project may add other serial command syntaxes as well. Yes, I had AI assistance in the coding, but feel free to review the code for yourself. It works great for my personal use case! This project is provided for educational and hobby purposes only. Use at your own risk. I am not responsible for any damage resulting from construction or use.
 
 ------------------------------------------------------------------------
 
