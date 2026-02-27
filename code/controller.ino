@@ -21,7 +21,7 @@
 #include <Wire.h>
 
 // LCD
-#include <LiquidCrystal_I2C.h>++++-----++++
+#include <LiquidCrystal_I2C.h>
 
 // USB HID keyboard (ESP32-S3)
 // If your Arduino-ESP32 core doesn't have this header, install/enable TinyUSB in Tools.
@@ -31,8 +31,13 @@
 // ----------------------------
 // WiFi credentials (edit here)
 // ----------------------------
-static const char* WIFI_SSID = "WIFI-SSID-HERE";
-static const char* WIFI_PASS = "WIFI-PASS-HERE";
+static const char* WIFI_SSID = "XXX";
+static const char* WIFI_PASS = "XXX";
+
+// Runtime WiFi (loaded from Preferences, defaults above)
+static String wifiSsid = WIFI_SSID;
+static String wifiPass = WIFI_PASS;
+static volatile bool wifiRestartPending = false;
 
 // Optional fallback AP if STA fails
 static const bool  ENABLE_FALLBACK_AP = true;
@@ -89,7 +94,7 @@ static const uint8_t LCD_ROWS = 4;
 // AP-mode line-2 horizontal scroll state
 static uint32_t apScrollLastMs = 0;
 static uint16_t apScrollPos = 0;
-static const uint32_t AP_SCROLL_STEP_MS = 350;
+static const uint32_t AP_SCROLL_STEP_MS = 700;
 
 
 static String fmt3(int v) {
@@ -852,15 +857,25 @@ static void handleSettings() {
   server.sendContent("<div class='card'><h2>Network</h2>");
   server.sendContent("<div class='row'>");
   server.sendContent("<div class='col'><b>WiFi SSID</b><div class='mono'>");
-  server.sendContent(htmlEscape(String(WIFI_SSID)));
+  server.sendContent(htmlEscape(wifiSsid));
   server.sendContent("</div></div>");
   server.sendContent("<div class='col'><b>Mode</b><div class='mono'>");
   server.sendContent(wifiSTAConnected ? "STA (client)" : (wifiAPActive ? "AP (fallback)" : "Down"));
   server.sendContent("</div></div>");
   server.sendContent("</div></div>");
 
+
   server.sendContent("<div class='card'><h2>Configuration</h2>");
   server.sendContent("<form method='POST' action='/save'>");
+
+  // WiFi creds (saved to NVS). Password saves ONLY if non-empty.
+  server.sendContent("<div class='row'>");
+  server.sendContent("<div class='col'>WiFi SSID<br><input name='wssid' value='");
+  server.sendContent(htmlEscape(wifiSsid));
+  server.sendContent("'></div>");
+  server.sendContent("<div class='col'>WiFi Password<br><input type='password' name='wpass' value='' placeholder='(unchanged if blank)'></div>");
+  server.sendContent("</div>");
+  server.sendContent("<div style='height:10px'></div>");
 
   server.sendContent("<div class='row'>");
   server.sendContent("<div class='col'>rotctld Host/IP<br><input name='rhost' value='");
@@ -888,7 +903,19 @@ static void handleSave() {
   if (server.hasArg("rhost")) rotHost = server.arg("rhost");
   if (server.hasArg("rport")) rotPort = (uint16_t)server.arg("rport").toInt();
   if (server.hasArg("safety")) safetyEnabled = (server.arg("safety").toInt() != 0);
-  prefs.begin("gs232bridge", false);
+  
+  // WiFi updates (save to NVS). Password only updates if non-empty.
+  if (server.hasArg("wssid")) {
+    String s = server.arg("wssid");
+    s.trim();
+    if (s.length() > 0) wifiSsid = s;
+  }
+  if (server.hasArg("wpass")) {
+    String p = server.arg("wpass");
+    // Do NOT trim passwords (spaces may be valid) - only check empty
+    if (p.length() > 0) wifiPass = p;
+  }
+prefs.begin("gs232bridge", false);
   prefs.putString("rhost", rotHost);
   prefs.putUShort("rport", rotPort);
   prefs.putBool("safety", safetyEnabled);
@@ -896,7 +923,9 @@ static void handleSave() {
 
   rotDisconnectIfOpen();
 
-  server.sendHeader("Location", "/settings");
+    wifiRestartPending = true;
+
+server.sendHeader("Location", "/settings");
   server.send(303, "text/plain", "Saved");
 }
 
@@ -1009,7 +1038,7 @@ static void wifiStart() {
   WiFi.setSleep(false);
 
   logSYS.add("WiFi: connecting STA...");
-  WiFi.begin(WIFI_SSID, WIFI_PASS);
+  WiFi.begin(wifiSsid.c_str(), wifiPass.c_str());
 
   uint32_t start = millis();
   while (millis() - start < WIFI_CONNECT_TIMEOUT_MS) {
@@ -1084,6 +1113,8 @@ void setup() {
   rotPort = prefs.getUShort("rport", rotPort);
   safetyEnabled = prefs.getBool("safety", safetyEnabled);
   btnKey = prefs.getString("bkey", btnKey);
+  wifiSsid = prefs.getString("wssid", wifiSsid);
+  wifiPass = prefs.getString("wpass", wifiPass);
   prefs.end();
 
   Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
@@ -1144,6 +1175,20 @@ void setup() {
 
 void loop() {
   server.handleClient();
+
+  // Apply WiFi changes safely outside HTTP handler context
+  if (wifiRestartPending) {
+    wifiRestartPending = false;
+    logSYS.add("WiFi: reconfig requested");
+    WiFi.disconnect(true, true);
+    delay(50);
+    wifiSTAConnected = false;
+    wifiAPActive = false;
+    apScrollPos = 0;
+    apScrollLastMs = 0;
+    wifiStart();
+  }
+
 
   while (Serial.available()) {
     char c = (char)Serial.read();
