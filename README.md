@@ -35,7 +35,7 @@ This controller:
     rotor
 
 This allows modern networked rotors to work seamlessly with 
-GS-232-based software --- no original Yaesu controller required.
+GS-232-based software --- no original Yaesu controller required. This project has no Yaesu affiliation, but they are extremely popular (for good reason), so they were the syntax I went with.
 
 ------------------------------------------------------------------------
 
