@@ -83,6 +83,50 @@ giving you physical, tactile frequency control during live operation. The contro
 -   rotctld-enabled rotor
 -   SatPC32 on Windows
 
+# 🔌 Wiring & Pinout
+
+Below is the reference wiring configuration used for this project.
+
+> ⚠️ Adjust GPIOs if needed for your specific ESP32-S3 board variant.
+
+---
+
+## 📟 LCD (20x4 I2C)
+
+| LCD Pin | ESP32-S3 Pin | Notes |
+|----------|--------------|-------|
+| VCC      | 5V           | Requires IN/OUT solder bridge for USB 5V output |
+| GND      | GND          | Common ground |
+| SDA      | GPIO 8       | I2C Data |
+| SCL      | GPIO 9       | I2C Clock |
+
+I2C speed configured at 400kHz.
+
+---
+
+## 🎛 Rotary Encoder (RAW EC11 – No Power Pin)
+
+This is a **mechanical encoder**.  
+It does NOT have a VCC pin.
+
+It works by shorting signal pins to **common (ground)**.
+
+### Encoder Rotation Pins
+
+| Encoder Pin | ESP32-S3 Pin | Notes |
+|-------------|--------------|-------|
+| A (CLK)     | GPIO 4       | Input with internal pull-up |
+| B (DT)      | GPIO 5       | Input with internal pull-up |
+| C (Common)  | GND          | Connect to ground |
+
+### Encoder Push Button
+
+| Switch Pin | ESP32-S3 Pin | Notes |
+|------------|--------------|-------|
+| SW1        | GPIO 6       | Input with internal pull-up |
+| SW2        | GND          | Connect to ground |
+
+
 ------------------------------------------------------------------------
 
 ## 2️⃣ Important: 5V Output (In/Out Solder Bridge)
