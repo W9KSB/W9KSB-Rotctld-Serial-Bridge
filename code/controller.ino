@@ -21,7 +21,7 @@
 #include <Wire.h>
 
 // LCD
-#include <LiquidCrystal_I2C.h>
+#include <LiquidCrystal_I2C.h>++++-----++++
 
 // USB HID keyboard (ESP32-S3)
 // If your Arduino-ESP32 core doesn't have this header, install/enable TinyUSB in Tools.
@@ -31,8 +31,8 @@
 // ----------------------------
 // WiFi credentials (edit here)
 // ----------------------------
-static const char* WIFI_SSID = "SSID-GOES-HERE";
-static const char* WIFI_PASS = "PASS-GOES-HERE";
+static const char* WIFI_SSID = "WIFI-SSID-HERE";
+static const char* WIFI_PASS = "WIFI-PASS-HERE";
 
 // Optional fallback AP if STA fails
 static const bool  ENABLE_FALLBACK_AP = true;
