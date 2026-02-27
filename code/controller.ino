@@ -650,14 +650,14 @@ static void sendKeyLaneUp() {
   Keyboard.press(KEY_UP_ARROW);
   delay(5);
   Keyboard.releaseAll();
-  logENC.add("TX Lane +");
+  logENC.add("TX Lane UP");
 }
 
 static void sendKeyLaneDown() {
   Keyboard.press(KEY_DOWN_ARROW);
   delay(5);
   Keyboard.releaseAll();
-  logENC.add("TX Lane -");
+  logENC.add("TX Lane DOWN");
 }
 
 static inline bool encButtonPressedRaw() {
