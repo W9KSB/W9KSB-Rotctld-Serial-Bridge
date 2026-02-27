@@ -328,6 +328,7 @@ Simultaneously:
 - Optional:
 - Latching Pushbuttons (BOOT Mode) - https://amzn.to/40s9ysa
 
+*These are the parts I ordered and used. Links below are affiliate links and I may earn a small commission on the sale at no additional cost to you.*
 
 ------------------------------------------------------------------------
 
