@@ -282,8 +282,8 @@ Simultaneously:
 - USB-C panel-mount extension cable - https://amzn.to/4aJc4ir
 - Breadboard jumper wires - https://amzn.to/3ZVG2uL
 - Optional:
-- momentary pushbuttons (BOOT / RESET) - https://amzn.to/40s9ysa
-- On\Off Power Toggle Switch - https://amzn.to/3ZWNk1k
+- Latching Pushbuttons (BOOT Mode) - https://amzn.to/40s9ysa
+
 
 ------------------------------------------------------------------------
 
