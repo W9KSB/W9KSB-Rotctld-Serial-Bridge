@@ -228,11 +228,12 @@ Then select the COM port corresponding to **Rotator Control**.
 
 Example components used during development:
 
-* Raspberry Pi Zero 2 W (or Original Raspberry Pi Zero)
-* 20x4 I2C LCD
-* EC11 Rotary Encoder
-* USB‑C panel mount extension
-* jumper wires
+* Raspberry Pi Zero 2 W (or Original Raspberry Pi Zero) - https://amzn.to/4lsCmdH
+* 20x4 I2C LCD - https://amzn.to/4bjcsVe
+* EC11 Rotary Encoder - https://amzn.to/4bijn0Y
+* USB‑C panel mount extension - https://amzn.to/3Pz3Qm2
+* jumper wires - https://amzn.to/4t3Gkwj
+* Micro-sd Card - https://amzn.to/3PjbrFf
 
 ---
 
