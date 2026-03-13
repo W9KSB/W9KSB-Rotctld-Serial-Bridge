@@ -152,8 +152,8 @@ This allows SDR software such as SDR++ to be controlled directly by SatPC32 with
 ## Web Interface
 
 ![Overview](photos/GUI-1.jpg)
-![Settings](photos/GUI-2-Settings.jpg)
-![Debug](photos/GUI-3-Debug.jpg)
+![Settings](photos/Gui-2.jpg)
+![Debug](photos/Gui-3.jpg)
 
 ---
 
