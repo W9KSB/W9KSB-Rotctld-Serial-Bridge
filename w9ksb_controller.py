@@ -449,8 +449,8 @@ def rot_get_position() -> Tuple[bool, float, float]:
     try:
         # Project-specific mapping: this rotctld path reports elevation first
         # and azimuth second, so translate back to GS-232 AZ/EL here.
-        el = float(l1)
-        az = float(l2)
+        az = float(l1)
+        el = float(l2)
     except Exception:
         return False, math.nan, math.nan
     with state.lock:
