@@ -149,6 +149,8 @@ This allows SDR software such as SDR++ to be controlled directly by SatPC32 with
 ![Rear View](photos/Device-2.jpeg)
 ![Internal Layout](photos/Device-3.jpeg)
 
+(sorry yes, this is an old photo from when it was ESP32 based. I will replace this photo at some point)
+
 ## Web Interface
 
 ![Overview](photos/GUI-1.jpg)
